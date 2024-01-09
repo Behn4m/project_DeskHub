@@ -31,7 +31,7 @@ extern "C"
 #define SMALL_BUF 250
 
 #define ACCESS_TOKEN_STR_SIZE 512
-#define TOKEN_TYPE_STR_SIZE  20
+#define TOKEN_TYPE_STR_SIZE 20
 #define REFRESH_TOKEN_STP_SIZE 512
 #define GRANTED_SCOP_STR_SIZE 512
 
@@ -44,14 +44,18 @@ extern "C"
 #define PRODUCT_STR_SIZE 30
 
 #define IDLE 0
-#define AUTHORIZED 1
-#define ACTIVE_USER 2
-#define EXPIRED_USER 3
+#define AUTHENTICATED 1
+#define AUTHORIZED 2
+#define SAVE_NEW_TOKEN 3
+#define EXPIRED 4
+#define CHECK_TIME 5
+
+#define EVENT_LOOP_QUEUE 5
 
     typedef struct Token_t
     {
         char AccessToken[ACCESS_TOKEN_STR_SIZE];
-        char TokenType[TOKEN_TYPE_STR_SIZE ];
+        char TokenType[TOKEN_TYPE_STR_SIZE];
         int ExpiresInMS;
         char RefreshToken[REFRESH_TOKEN_STP_SIZE];
         char GrantedScope[GRANTED_SCOP_STR_SIZE];
@@ -74,13 +78,12 @@ extern "C"
         idle = 0,
         authorized = 1,
         active_user = 2,
-        expired_user = 3
+        save_new_token=3,
+        expired_user = 4,
+        check_time=5
+
     } Status_t;
 
-
-    typedef void (*ReadTxtFileFromSpiffsPtr)(char *addressInSpiffs, char *key, char *value, ...);
-    typedef void (*WriteTxtFileToSpiffsPtr)(char *addressInSpiffs, char *key, char *value, ...);
-    typedef bool (*CheckAddressInSpiffsPtr)(char *addressInSpiffs);
     typedef void (*EventHandlerCallBackPtr)(char *Buffer);
 
     typedef struct
@@ -100,9 +103,8 @@ extern "C"
     typedef struct
     {
         Status_t *status;
-        QueueHandle_t *HttpsBufQueue;
+        QueueHandle_t *SendCodeFromHttpToSpotifyTask;
     } HttpLocalServerParam_t;
-
 #endif
 #ifdef __cplusplus
 }

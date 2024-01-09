@@ -39,9 +39,10 @@ typedef struct
     QueueHandle_t *HttpsBufQueue;
     SemaphoreHandle_t *HttpsResponseReadySemaphore;
     SemaphoreHandle_t *IsSpotifyAuthorizedSemaphore;
+    SemaphoreHandle_t *WorkWithStorageInSpotifyComponentSemaphore;
 #endif    
     SemaphoreHandle_t *WifiParamExistenceCheckerSemaphore;
-    SemaphoreHandle_t *FinishWifiConfig;        
+    SemaphoreHandle_t *FinishWifiConfig;  
 } GlobalInitInterfaceHandler_t;
 
 #ifdef SpotifyEnable
