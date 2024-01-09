@@ -7,12 +7,13 @@ static const char *TAG = "GlobalInit";
  *  globally
  */
 bool GlobalInit(GlobalInitInterfaceHandler_t *InterfaceHandler)
-{    
+{        
     if (
     #ifdef SpotifyEnable        
         InterfaceHandler->HttpsBufQueue != NULL &&
         InterfaceHandler->HttpsResponseReadySemaphore != NULL &&
         InterfaceHandler->IsSpotifyAuthorizedSemaphore != NULL &&
+        InterfaceHandler->WorkWithStorageInSpotifyComponentSemaphore != NULL &&
     #endif        
         InterfaceHandler->FinishWifiConfig != NULL &&
         InterfaceHandler->WifiParamExistenceCheckerSemaphore != NULL)
@@ -21,16 +22,17 @@ bool GlobalInit(GlobalInitInterfaceHandler_t *InterfaceHandler)
         InterfaceHandler->HttpsBufQueue = xQueueCreate(1, sizeof(char) * sizeof(char[2500]));
         InterfaceHandler->HttpsResponseReadySemaphore = xSemaphoreCreateBinary();
         InterfaceHandler->IsSpotifyAuthorizedSemaphore = xSemaphoreCreateBinary();
+        InterfaceHandler->WorkWithStorageInSpotifyComponentSemaphore = xSemaphoreCreateBinary();
     #endif        
         InterfaceHandler->FinishWifiConfig = xSemaphoreCreateBinary();
-        InterfaceHandler->WifiParamExistenceCheckerSemaphore = xSemaphoreCreateBinary();
-                            
+        InterfaceHandler->WifiParamExistenceCheckerSemaphore = xSemaphoreCreateBinary();        
+
         ESP_LOGI(TAG, "GlobalInit initiated successfully");        
         return true;
     }    
     else
     {
-        ESP_LOGE(TAG, "GlobalInit is is missing some pointers, can not run the app");
+        ESP_LOGE(TAG, "GlobalInit is missing some pointers, can not run the app");
         return false;
     }
     

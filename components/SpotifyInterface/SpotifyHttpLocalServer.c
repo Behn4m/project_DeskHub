@@ -10,19 +10,19 @@ HttpLocalServerParam_t HttpLocalServerLocalParam;
  */
 static esp_err_t Spotify_RequestDataAccess(httpd_req_t *req)
 {
-    char *loc_url;
-    loc_url = (char *)malloc((2 * SMALL_BUF) * sizeof(char));
-    if (loc_url == NULL)
+    char *LocalURL;
+    LocalURL = (char *)malloc((2 * SMALL_BUF) * sizeof(char));
+    if (LocalURL == NULL)
     {
         ESP_LOGI(TAG, "Failed to allocate memory for the array.\n\n");
     }
-    memset(loc_url, 0x0, SMALL_BUF * 2);
+    memset(LocalURL, 0x0, SMALL_BUF * 2);
     if (((*HttpLocalServerLocalParam.status) == IDLE))
     {
 
         ESP_LOGI(TAG, "Starting authorization, sending request for TOKEN");
-        sprintf(loc_url, "http://accounts.spotify.com/authorize/?client_id=%s&response_type=code&redirect_uri=%s&scope=user-read-private%%20user-read-currently-playing%%20user-read-playback-state%%20user-modify-playback-state", ClientId, ReDirectUri);
-        httpd_resp_set_hdr(req, "Location", loc_url);
+        sprintf(LocalURL, "http://accounts.spotify.com/authorize/?client_id=%s&response_type=code&redirect_uri=%s&scope=user-read-private%%20user-read-currently-playing%%20user-read-playback-state%%20user-modify-playback-state", ClientId, ReDirectUri);
+        httpd_resp_set_hdr(req, "Location", LocalURL);
         httpd_resp_set_type(req, "text/plain");
         httpd_resp_set_status(req, "302");
         httpd_resp_send(req, "", HTTPD_RESP_USE_STRLEN);
@@ -31,7 +31,7 @@ static esp_err_t Spotify_RequestDataAccess(httpd_req_t *req)
     {
         ESP_LOGW(TAG, "Spotify is already initiated");
     }
-    free(loc_url);
+    free(LocalURL);
     return ESP_OK;
 }
 
@@ -42,20 +42,20 @@ static esp_err_t Spotify_RequestDataAccess(httpd_req_t *req)
  */
 static esp_err_t Spotify_HttpsCallbackHandler(httpd_req_t *req)
 {
-    char Buf[500];
+    char Buf[SMALL_BUF*2];
     if (httpd_req_get_url_query_str(req, Buf, sizeof(Buf)) == ESP_OK)
     {
         if (Spotify_FindCode(Buf, sizeof(Buf)) == true)
         {
-            if (xQueueSend(*(HttpLocalServerLocalParam.HttpsBufQueue), Buf, 0) == pdTRUE)
+            if (xQueueSend(*(HttpLocalServerLocalParam.SendCodeFromHttpToSpotifyTask), Buf, portMAX_DELAY) != pdTRUE)
             {
-                ESP_LOGI(TAG, "Sent data with queue");
+                ESP_LOGE(TAG, "Sent data with queue failed !");
             }
-            ESP_LOGI(TAG, "we find CODE");
+            ESP_LOGI(TAG, "the CODE found in response");
             httpd_resp_set_type(req, "text/plain");
             httpd_resp_set_status(req, HTTPD_200);
             httpd_resp_send(req, Buf, HTTPD_RESP_USE_STRLEN);
-            (*HttpLocalServerLocalParam.status) = AUTHORIZED;
+            (*HttpLocalServerLocalParam.status) = AUTHENTICATED;
         }
         else
         {
@@ -82,6 +82,7 @@ static const httpd_uri_t Spotify_Request_Access_URI = {
     .uri = "/",
     .method = HTTP_GET,
     .handler = Spotify_RequestDataAccess};
+
 /**
  * this strcut is http URL handler if receive "/callback" HttpsUserCallBackFunc getting run
  */
@@ -89,32 +90,33 @@ static const httpd_uri_t Spotify_Response_Access_URI = {
     .uri = "/callback/",
     .method = HTTP_GET,
     .handler = Spotify_HttpsCallbackHandler};
+
 /**
  * @brief Setup parameter for starting Http Local server
- * @param[in] HttpLocalServerParam_t HttpLocalServerParam_)
+ * @param[in] HttpLocalServerParam_t HttpLocalServerParam_t
  */
-void SetupHttpLocalServer(HttpLocalServerParam_t HttpLocalServerParam_)
+void Spotify_SetupHttpLocalServer(HttpLocalServerParam_t HttpLocalServerParam_t)
 {
-    HttpLocalServerLocalParam.HttpsBufQueue = HttpLocalServerParam_.HttpsBufQueue;
-    HttpLocalServerLocalParam.status = HttpLocalServerParam_.status;
+    HttpLocalServerLocalParam.SendCodeFromHttpToSpotifyTask = HttpLocalServerParam_t.SendCodeFromHttpToSpotifyTask;
+    HttpLocalServerLocalParam.status = HttpLocalServerParam_t.status;
 }
 
 /**
  * @brief This function starts the web server for handling HTTPS requests.
  * @return Returns the HTTP server handle if it is started successfully, or NULL otherwise.
  */
-httpd_handle_t StartWebServer()
+httpd_handle_t Spotify_StartWebServer()
 {
-    httpd_handle_t localServer = NULL;
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.lru_purge_enable = true;
-    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
-    if (httpd_start(&localServer, &config) == ESP_OK)
+    httpd_handle_t LocalServer = NULL;
+    httpd_config_t Config = HTTPD_DEFAULT_CONFIG();
+    Config.lru_purge_enable = true;
+    ESP_LOGI(TAG, "Starting server on port: '%d'", Config.server_port);
+    if (httpd_start(&LocalServer, &Config) == ESP_OK)
     {
         ESP_LOGI(TAG, "Registering URI handlers");
-        httpd_register_uri_handler(localServer, &Spotify_Request_Access_URI);
-        httpd_register_uri_handler(localServer, &Spotify_Response_Access_URI);
-        return localServer;
+        httpd_register_uri_handler(LocalServer, &Spotify_Request_Access_URI);
+        httpd_register_uri_handler(LocalServer, &Spotify_Response_Access_URI);
+        return LocalServer;
     }
     else
     {
@@ -126,56 +128,15 @@ httpd_handle_t StartWebServer()
  * @brief This function stops the web server for handling HTTPS requests.
  * @return Returns the HTTP server handle if it is started successfully, or NULL otherwise.
  */
- esp_err_t StopSpotifyWebServer(httpd_handle_t server)
+ esp_err_t Spotify_StopSpotifyWebServer(httpd_handle_t server)
 {
     return httpd_stop(server);
 }
 
 /**
- * @brief This function is the handler for the disconnect event.
- * @param[in] arg Pointer to the HTTP server handle.
- * @param[in] event_base The event base.
- * @param[in] event_id The event ID.
- * @param[in] event_data The event data.
- */
-static void HttpLocalServerDisconnectHandler(void *arg, esp_event_base_t event_base,
-                                             int32_t event_id, void *event_data)
-{
-    httpd_handle_t *server = (httpd_handle_t *)arg;
-    if (*server)
-    {
-        if (StopSpotifyWebServer(*server) == ESP_OK)
-        {
-            *server = NULL;
-        }
-        else
-        {
-            ESP_LOGE(TAG, "Failed to stop https server");
-        }
-    }
-}
-
-/**
- * @brief This function is the handler for the connect event.
- * @param[in] arg Pointer to the HTTP server handle.
- * @param[in] event_base The event base.
- * @param[in] event_id The event ID.
- * @param[in] event_data The event data.
- */
-static void HttpLocalServerConnectHandler(void *arg, esp_event_base_t event_base,
-                                          int32_t event_id, void *event_data)
-{
-    httpd_handle_t *server = (httpd_handle_t *)arg;
-    if (*server == NULL)
-    {
-        *server = StartWebServer();
-    }
-}
-
-/**
  * @brief This function starts the mDNS service.
  */
-bool StartMDNSService()
+bool Spotify_StartMDNSService()
 {
     esp_err_t err = mdns_init();
     if (err)
